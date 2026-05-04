@@ -1,0 +1,29 @@
+.product-status{
+  display: flex;
+  align-items: center;
+  justify-content: center ;
+  gap: 24px;
+  padding: 16px 0;
+  width: min-content;
+}
+
+.pagination-container{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pagination-button{
+  background: transparent;
+  padding: 4px 8px;
+  border: 1px solid gray;
+  border-radius: 4%;
+  cursor: pointer;
+}
+.pagination-button:disabled{
+  pointer-events: none;
+}
+
+.pagination-button:hover{
+  transform: scale(0.95);
+}

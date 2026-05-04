@@ -1,15 +1,5 @@
-import React from 'react'
-import { redirect, useLoaderData } from 'react-router'
+import { redirect } from "react-router";
 
-const loader = async()=>{
-  redirect("/app/products/import  ")
-}
-
-function ProductIndex() {
-  const data = useLoaderData();
-  return (
-    <></>
-  )
-}
-
-export default ProductIndex
+export const loader = () => {
+  return redirect("/app/products/import");
+};

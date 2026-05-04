@@ -1,16 +1,16 @@
-import React from 'react'
-import { Outlet } from 'react-router'
-
-
+import React from "react";
+import { Outlet } from "react-router";
 
 function Products() {
   return (
     <>
-      <s-clickable>Import</s-clickable>
-      <s-clickable>Export</s-clickable>
+      <s-section>
+        <s-clickable>Export</s-clickable>
+        <s-clickable>Import</s-clickable>
+      </s-section>
       <Outlet />
     </>
-  )
+  );
 }
 
-export default Products
+export default Products;
