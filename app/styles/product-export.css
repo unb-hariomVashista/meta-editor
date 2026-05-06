@@ -1,12 +1,23 @@
-.product-status{
+.product-container{
   display: flex;
   align-items: center;
-  justify-content: center ;
+  justify-content: space-between;
   gap: 24px;
   padding: 16px 0;
-  width: min-content;
+  width: 100%;
 }
-
+.product-status-container{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+}
+.export-buttons{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
 .pagination-container{
   display: flex;
   gap: 10px;
