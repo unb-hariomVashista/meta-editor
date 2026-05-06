@@ -1,4 +1,4 @@
-import { useLoaderData, useNavigate } from "react-router";
+import { Form, useLoaderData, useNavigate } from "react-router";
 import "../styles/product-export.css";
 import { useEffect, useState } from "react";
 
@@ -66,8 +66,9 @@ export const action = async ({ request }) => {
   const { authenticate } = await import("../shopify.server.js");
   const { admin } = await authenticate.admin(request);
 
-  const body = await request.json();
-  const { ids } = body;
+  const formData = await request.formData();
+  const idsJson = formData.get("ids") || "[]";
+  const ids = JSON.parse(idsJson);
 
   const response = await admin.graphql(
     `
@@ -98,8 +99,51 @@ export const action = async ({ request }) => {
     },
   );
   const json = await response.json();
-  console.log(json);
-  return null;
+  const products = json.data.nodes || [];
+
+  const rows = [
+    [
+      "product gid",
+      "product handle",
+      "product title",
+      "metafield namespace",
+      "metafield key",
+      "metafield type",
+      "metafield value",
+    ],
+  ];
+
+  products.forEach((product) => {
+    if (!product) return;
+    const metafields = product.metafields?.edges || [];
+    metafields.forEach((field) => {
+      rows.push([
+        product.id,
+        product.handle,
+        product.title,
+        field.node.namespace,
+        field.node.key,
+        field.node.type,
+        field.node.value,
+      ]);
+    });
+  });
+  const csv = rows
+    .map((row) => {
+      return row
+        .map((value) => {
+          return `"${String(value ?? "").replace(/"/g, '""')}"`;
+        })
+        .join(",");
+    })
+    .join("\n");
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv",
+      "Content-Disposition": 'attachment; filename="products-metafields.csv"',
+    },
+  });
 };
 
 function ProductExport() {
@@ -150,17 +194,31 @@ function ProductExport() {
     });
   };
 
-  const exportSelected = async ()=>{
+  const exportSelected = async () => {
     const ids = Array.from(selectedProducts);
 
-    await fetch("/app/products/export", {
+    const response = await fetch("/app/products/export", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ids})
-    })
-  }
+      body: JSON.stringify({ ids }),
+    });
+    console.log(response.headers.get("content-type"));
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    // const a = document.createElement("a");
+    // a.href = url;
+    // a.download = "products-metafields.csv";
+
+    // document.body.appendChild(a);
+    // a.click();
+
+    // a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <s-section>
@@ -171,10 +229,18 @@ function ProductExport() {
             <s-clickable>Draft</s-clickable>
           </div>
           <div className="export-buttons">
-            <s-button>Export all products</s-button>
-            {selectedProducts.size > 0 ? (
-              <s-button onClick={exportSelected}>Export {selectedProducts.size} products</s-button>
-            ) : null}
+            <Form method="post" reloadDocument>
+              <input
+                type="hidden"
+                name="ids"
+                value={JSON.stringify(Array.from(selectedProducts))}
+              />
+              {selectedProducts.size > 0 ? (
+                <button type="submit">
+                  Export {selectedProducts.size} products
+                </button>
+              ) : null}
+            </Form>
           </div>
         </div>
         <s-table>
