@@ -31,6 +31,13 @@ export const loader = async ({ request }) => {
           nodes{
             id
             title
+            featuredMedia {
+              preview {
+                image {
+                  url
+                }
+              }
+            }
             variants(first: 50) {
               nodes {
                 id
@@ -171,11 +178,7 @@ function VariantExport() {
     <div>
       <s-section>
         <div className="product-container">
-          <div className="product-status-container">
-            <s-clickable>All</s-clickable>
-            <s-clickable>Active</s-clickable>
-            <s-clickable>Draft</s-clickable>
-          </div>
+
           <div className="export-buttons">
             {selectedProducts.size > 0 ? (
               <button onClick={exportSelected}>
@@ -205,7 +208,7 @@ function VariantExport() {
                   <s-table-row key={variant.id}>
                     <s-table-cell>
                       <img
-                        src={variant.nodes?.preview?.image?.url}
+                        src={variant.media?.nodes?.[0]?.preview?.image?.url || node.featuredMedia?.preview?.image?.url || ""}
                         width={40}
                         height={40}
                       />

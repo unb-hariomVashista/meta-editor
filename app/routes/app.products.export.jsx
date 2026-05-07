@@ -1,4 +1,4 @@
-import { Form, useLoaderData, useNavigate } from "react-router";
+import { Form, useLoaderData, useNavigate, useSearchParams } from "react-router";
 import "../styles/product-export.css";
 import { useEffect, useState } from "react";
 
@@ -24,10 +24,14 @@ export const loader = async ({ request }) => {
     variables.first = 25;
     variables.after = cursor;
   }
+  const type = url.searchParams.get("type") || "all";
+  if (type === "active") variables.query = "status:active";
+  if (type === "draft") variables.query = "status:draft";
+
   const response = await admin.graphql(
     `
-      query GetProducts($after: String, $before: String, $first: Int, $last: Int){
-        products(first: $first, last: $last, after: $after, before: $before){
+      query GetProducts($after: String, $before: String, $first: Int, $last: Int, $query: String){
+        products(first: $first, last: $last, after: $after, before: $before, query: $query){
           nodes{
             id
             title
@@ -68,6 +72,9 @@ function ProductExport() {
   const data = useLoaderData();
   const navigate = useNavigate();
 
+  const [searchParams] = useSearchParams();
+  const currentType = searchParams.get("type") || "all";
+
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const pageIds = data.data.products.nodes.map((node) => {
     return node.id;
@@ -77,13 +84,30 @@ function ProductExport() {
 
   const handleNext = () => {
     const cursor = data.data.products.pageInfo.endCursor;
-    navigate(`?cursor=${cursor}&direction=next`);
+    navigate(`?cursor=${cursor}&direction=next&type=${currentType}`);
   };
 
   const handlePrev = () => {
     const cursor = data.data.products.pageInfo.startCursor;
-    navigate(`?cursor=${cursor}&direction=prev`);
+    navigate(`?cursor=${cursor}&direction=prev&type=${currentType}`);
   };
+
+  const handleFilter = (type) => {
+    navigate(`?type=${type}`);
+    setSelectedProducts(new Set()); // Reset selection on filter change
+  };
+
+  const buttonStyle = (isActive) => ({
+    padding: "6px 12px",
+    borderRadius: "6px",
+    border: "none",
+    backgroundColor: isActive ? "#e4e5e7" : "transparent",
+    color: isActive ? "#000" : "#5c5f62",
+    fontWeight: isActive ? "600" : "400",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
+    fontSize: "14px",
+  });
 
   const handleSelection = (id) => {
     setSelectedProducts((prev) => {
@@ -156,10 +180,10 @@ function ProductExport() {
     <div>
       <s-section>
         <div className="product-container">
-          <div className="product-status-container">
-            <s-clickable>All</s-clickable>
-            <s-clickable>Active</s-clickable>
-            <s-clickable>Draft</s-clickable>
+          <div className="product-status-container" style={{ display: "flex", gap: "4px" }}>
+            <button style={buttonStyle(currentType === "all")} onClick={() => handleFilter("all")}>All</button>
+            <button style={buttonStyle(currentType === "active")} onClick={() => handleFilter("active")}>Active</button>
+            <button style={buttonStyle(currentType === "draft")} onClick={() => handleFilter("draft")}>Draft</button>
           </div>
           <div className="export-buttons">
             {selectedProducts.size > 0 ? (

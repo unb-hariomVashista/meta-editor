@@ -1,14 +1,41 @@
 import React from "react";
-import { Outlet, useNavigate } from "react-router";
+import { Outlet, useNavigate, useLocation } from "react-router";
 
 function Products() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isExportActive = location.pathname.includes("export");
+  const isImportActive = location.pathname.includes("import");
+
+  const buttonStyle = (isActive) => ({
+    padding: "8px 16px",
+    borderRadius: "6px",
+    border: "none",
+    backgroundColor: isActive ? "#e4e5e7" : "transparent",
+    color: isActive ? "#000" : "#5c5f62",
+    fontWeight: isActive ? "600" : "400",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
+    fontSize: "14px",
+  });
+
   return (
     <>
-      <s-section>
-        <s-clickable onClick={() => navigate("/app/products/export")}>Export</s-clickable>
-        <s-clickable onClick={() => navigate("/app/products/import")}>Import</s-clickable>
-      </s-section>
+        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid #ebebeb", paddingBottom: "10px", marginBottom: "15px" }}>
+          <button 
+            style={buttonStyle(isExportActive)} 
+            onClick={() => navigate("/app/products/export")}
+          >
+            Export
+          </button>
+          <button 
+            style={buttonStyle(isImportActive)} 
+            onClick={() => navigate("/app/products/import")}
+          >
+            Import
+          </button>
+        </div>
       <Outlet />
     </>
   );
