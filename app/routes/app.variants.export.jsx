@@ -1,4 +1,4 @@
-import { Form, useLoaderData, useNavigate } from "react-router";
+import { Form, useLoaderData, useNavigate, useSearchParams } from "react-router";
 import "../styles/product-export.css";
 import { useEffect, useState } from "react";
 
@@ -9,6 +9,7 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor");
   const direction = url.searchParams.get("direction");
+  const search = url.searchParams.get("search") || "";
 
   let variables = {
     after: null,
@@ -24,10 +25,16 @@ export const loader = async ({ request }) => {
     variables.first = 25;
     variables.after = cursor;
   }
+
+  if (search) {
+    const safeSearch = search.replace(/"/g, '');
+    variables.query = `(title:*${safeSearch}* OR sku:*${safeSearch}* OR handle:*${safeSearch}*)`;
+  }
+
   const response = await admin.graphql(
     `
-      query GetProducts($after: String, $before: String, $first: Int, $last: Int){
-        products(first: $first, last: $last, after: $after, before: $before){
+      query GetProducts($after: String, $before: String, $first: Int, $last: Int, $query: String){
+        products(first: $first, last: $last, after: $after, before: $before, query: $query){
           nodes{
             id
             title
@@ -82,7 +89,9 @@ export const loader = async ({ request }) => {
 function VariantExport() {
   const data = useLoaderData();
   const navigate = useNavigate();
-  console.log(data);
+  const [searchParams] = useSearchParams();
+  const searchQuery = searchParams.get("search") || "";
+
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const pageIds = data.data.products.nodes.flatMap((node) =>
     node.variants.nodes.map((variant) => variant.id),
@@ -92,12 +101,17 @@ function VariantExport() {
 
   const handleNext = () => {
     const cursor = data.data.products.pageInfo.endCursor;
-    navigate(`?cursor=${cursor}&direction=next`);
+    navigate(`?cursor=${cursor}&direction=next${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
   };
 
   const handlePrev = () => {
     const cursor = data.data.products.pageInfo.startCursor;
-    navigate(`?cursor=${cursor}&direction=prev`);
+    navigate(`?cursor=${cursor}&direction=prev${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
+  };
+
+  const handleClearSearch = () => {
+    navigate(`?`);
+    setSelectedProducts(new Set());
   };
 
   const handleSelection = (id) => {
@@ -177,8 +191,21 @@ function VariantExport() {
   return (
     <div>
       <s-section>
-        <div className="product-container">
-
+        <div className="product-container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+          <Form method="get" style={{ display: "flex", gap: "5px" }} onSubmit={() => setSelectedProducts(new Set())}>
+            <input 
+              type="text" 
+              name="search" 
+              key={searchQuery}
+              placeholder="Search SKUs, handles, titles..." 
+              defaultValue={searchQuery}
+              style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", width: "300px", fontSize: "14px" }}
+            />
+            <button type="submit" style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#f4f6f8", cursor: "pointer", fontSize: "14px" }}>Search</button>
+            {searchQuery && (
+              <button type="button" onClick={handleClearSearch} style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontSize: "14px", color: "#d22d2d" }}>Clear</button>
+            )}
+          </Form>
           <div className="export-buttons">
             {selectedProducts.size > 0 ? (
               <button onClick={exportSelected}>

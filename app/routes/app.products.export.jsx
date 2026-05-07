@@ -25,8 +25,20 @@ export const loader = async ({ request }) => {
     variables.after = cursor;
   }
   const type = url.searchParams.get("type") || "all";
-  if (type === "active") variables.query = "status:active";
-  if (type === "draft") variables.query = "status:draft";
+  const search = url.searchParams.get("search") || "";
+  
+  let queryParts = [];
+  if (type === "active") queryParts.push("status:active");
+  if (type === "draft") queryParts.push("status:draft");
+  
+  if (search) {
+    const safeSearch = search.replace(/"/g, '');
+    queryParts.push(`(title:*${safeSearch}* OR sku:*${safeSearch}* OR handle:*${safeSearch}*)`);
+  }
+  
+  if (queryParts.length > 0) {
+    variables.query = queryParts.join(" AND ");
+  }
 
   const response = await admin.graphql(
     `
@@ -74,6 +86,7 @@ function ProductExport() {
 
   const [searchParams] = useSearchParams();
   const currentType = searchParams.get("type") || "all";
+  const searchQuery = searchParams.get("search") || "";
 
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const pageIds = data.data.products.nodes.map((node) => {
@@ -84,17 +97,22 @@ function ProductExport() {
 
   const handleNext = () => {
     const cursor = data.data.products.pageInfo.endCursor;
-    navigate(`?cursor=${cursor}&direction=next&type=${currentType}`);
+    navigate(`?cursor=${cursor}&direction=next&type=${currentType}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
   };
 
   const handlePrev = () => {
     const cursor = data.data.products.pageInfo.startCursor;
-    navigate(`?cursor=${cursor}&direction=prev&type=${currentType}`);
+    navigate(`?cursor=${cursor}&direction=prev&type=${currentType}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
   };
 
   const handleFilter = (type) => {
-    navigate(`?type=${type}`);
+    navigate(`?type=${type}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
     setSelectedProducts(new Set()); // Reset selection on filter change
+  };
+
+  const handleClearSearch = () => {
+    navigate(`?type=${currentType}`);
+    setSelectedProducts(new Set());
   };
 
   const buttonStyle = (isActive) => ({
@@ -179,11 +197,28 @@ function ProductExport() {
   return (
     <div>
       <s-section>
-        <div className="product-container">
-          <div className="product-status-container" style={{ display: "flex", gap: "4px" }}>
-            <button style={buttonStyle(currentType === "all")} onClick={() => handleFilter("all")}>All</button>
-            <button style={buttonStyle(currentType === "active")} onClick={() => handleFilter("active")}>Active</button>
-            <button style={buttonStyle(currentType === "draft")} onClick={() => handleFilter("draft")}>Draft</button>
+        <div className="product-container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+          <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
+            <div className="product-status-container" style={{ display: "flex", gap: "4px" }}>
+              <button style={buttonStyle(currentType === "all")} onClick={() => handleFilter("all")}>All</button>
+              <button style={buttonStyle(currentType === "active")} onClick={() => handleFilter("active")}>Active</button>
+              <button style={buttonStyle(currentType === "draft")} onClick={() => handleFilter("draft")}>Draft</button>
+            </div>
+            <Form method="get" style={{ display: "flex", gap: "5px" }} onSubmit={() => setSelectedProducts(new Set())}>
+              <input type="hidden" name="type" value={currentType} />
+              <input 
+                type="text" 
+                name="search" 
+                key={searchQuery}
+                placeholder="Search SKUs, handles, titles..." 
+                defaultValue={searchQuery}
+                style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", width: "250px", fontSize: "14px" }}
+              />
+              <button type="submit" style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#f4f6f8", cursor: "pointer", fontSize: "14px" }}>Search</button>
+              {searchQuery && (
+                <button type="button" onClick={handleClearSearch} style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontSize: "14px", color: "#d22d2d" }}>Clear</button>
+              )}
+            </Form>
           </div>
           <div className="export-buttons">
             {selectedProducts.size > 0 ? (
