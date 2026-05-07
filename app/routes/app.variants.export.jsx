@@ -31,19 +31,28 @@ export const loader = async ({ request }) => {
           nodes{
             id
             title
-            status
-            featuredMedia {
-              alt
-              preview {
-                image {
-                  url
+            variants(first: 50) {
+              nodes {
+                id
+                title
+                media(first: 1) {
+                  nodes {
+                    preview {
+                      image {
+                        url
+                      }
+                    }
+                  }
                 }
-              }
-            }
-            metafields(first: 6) {
-              nodes{
-                namespace
-                type
+                metafields(first: 25) {
+                  nodes {
+                    id
+                    namespace
+                    key
+                    type
+                    value
+                  }
+                }
               }
             }
           }
@@ -63,15 +72,14 @@ export const loader = async ({ request }) => {
 };
 
 
-
-function ProductExport() {
+function VariantExport() {
   const data = useLoaderData();
   const navigate = useNavigate();
-
+  console.log(data);
   const [selectedProducts, setSelectedProducts] = useState(new Set());
-  const pageIds = data.data.products.nodes.map((node) => {
-    return node.id;
-  });
+  const pageIds = data.data.products.nodes.flatMap((node) =>
+    node.variants.nodes.map((variant) => variant.id),
+  );
   const isAllSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedProducts.has(id));
 
@@ -97,6 +105,7 @@ function ProductExport() {
       return newSet;
     });
   };
+
   const handleAllSelection = (ids) => {
     setSelectedProducts((prev) => {
       const newSet = new Set(prev);
@@ -116,10 +125,9 @@ function ProductExport() {
     const ids = Array.from(selectedProducts);
 
     try {
-      // Manually retrieve the App Bridge session token to ensure the request is authenticated
       const token = await window.shopify.idToken();
 
-      const response = await fetch("/app/api/products/export", {
+      const response = await fetch("/app/api/variants/export", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -130,7 +138,14 @@ function ProductExport() {
 
       if (!response.ok) {
         console.error("Export failed:", response.status, response.statusText);
-        alert("Failed to export products. Please try again.");
+        alert("Failed to export variants. Please try again.");
+        return;
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.error("Export failed: Received HTML instead of CSV.");
+        alert("Export failed: Received HTML instead of CSV.");
         return;
       }
 
@@ -139,7 +154,7 @@ function ProductExport() {
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = "products-metafields.csv";
+      a.download = "variants-metafields.csv";
 
       document.body.appendChild(a);
       a.click();
@@ -164,7 +179,7 @@ function ProductExport() {
           <div className="export-buttons">
             {selectedProducts.size > 0 ? (
               <button onClick={exportSelected}>
-                Export {selectedProducts.size} products
+                Export {selectedProducts.size} variants
               </button>
             ) : null}
           </div>
@@ -172,8 +187,8 @@ function ProductExport() {
         <s-table>
           <s-table-header-row>
             <s-table-header></s-table-header>
-            <s-table-header>Name</s-table-header>
-            <s-table-header>Status</s-table-header>
+            <s-table-header>Variant Name</s-table-header>
+            <s-table-header>Product</s-table-header>
             <s-table-header>Number of Metafields</s-table-header>
             <s-table-header>
               <input
@@ -185,34 +200,36 @@ function ProductExport() {
           </s-table-header-row>
           <s-table-body>
             {data.data.products.nodes.map((node) => {
-              return (
-                <s-table-row key={node.id}>
-                  <s-table-cell>
-                    <img
-                      src={node.featuredMedia?.preview?.image?.url}
-                      width={40}
-                      height={40}
-                    />
-                  </s-table-cell>
-                  <s-table-cell>{node.title}</s-table-cell>
-                  <s-table-cell>{node.status}</s-table-cell>
-                  <s-table-cell>
-                    {node.metafields.nodes.length == 0
-                      ? "0"
-                      : node.metafields.nodes.length > 5
-                        ? "5+"
-                        : node.metafields.nodes.length}{" "}
-                    metafields
-                  </s-table-cell>
-                  <s-table-cell>
-                    <input
-                      type="checkbox"
-                      checked={selectedProducts.has(node.id)}
-                      onChange={() => handleSelection(node.id)}
-                    />
-                  </s-table-cell>
-                </s-table-row>
-              );
+              return node.variants.nodes.map((variant) => {
+                return (
+                  <s-table-row key={variant.id}>
+                    <s-table-cell>
+                      <img
+                        src={variant.nodes?.preview?.image?.url}
+                        width={40}
+                        height={40}
+                      />
+                    </s-table-cell>
+                    <s-table-cell>{variant.title}</s-table-cell>
+                    <s-table-cell>{node.title}</s-table-cell>
+                    <s-table-cell>
+                      {variant.metafields.nodes.length == 0
+                        ? "0"
+                        : variant.metafields.nodes.length > 5
+                          ? "5+"
+                          : variant.metafields.nodes.length}{" "}
+                      metafields
+                    </s-table-cell>
+                    <s-table-cell>
+                      <input
+                        type="checkbox"
+                        checked={selectedProducts.has(variant.id)}
+                        onChange={() => handleSelection(variant.id)}
+                      />
+                    </s-table-cell>
+                  </s-table-row>
+                );
+              });
             })}
           </s-table-body>
         </s-table>
@@ -238,4 +255,4 @@ function ProductExport() {
   );
 }
 
-export default ProductExport;
+export default VariantExport;

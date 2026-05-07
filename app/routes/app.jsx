@@ -17,8 +17,8 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/products">Products</s-link>
-        <s-link href="/app/variants">Variants</s-link>
+        <s-link href="/app/products/export">Products</s-link>
+        <s-link href="/app/variants/export">Variants</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>

@@ -1,12 +1,13 @@
 import React from "react";
-import { Outlet } from "react-router";
+import { Outlet, useNavigate } from "react-router";
 
 function Products() {
+  const navigate = useNavigate();
   return (
     <>
       <s-section>
-        <s-clickable>Export</s-clickable>
-        <s-clickable>Import</s-clickable>
+        <s-clickable onClick={() => navigate("/app/products/export")}>Export</s-clickable>
+        <s-clickable onClick={() => navigate("/app/products/import")}>Import</s-clickable>
       </s-section>
       <Outlet />
     </>
