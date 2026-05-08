@@ -2,7 +2,7 @@
 
 client_id = "cbd97f32e7569901dd03574dcbfb008d"
 name = "Meta Editor"
-application_url = "https://example.com"
+application_url = "https://meta-editor.onrender.com"
 embedded = true
 
 [build]
@@ -25,7 +25,7 @@ api_version = "2026-07"
 scopes = "write_products"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://meta-editor.onrender.com/api/auth" ]
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
