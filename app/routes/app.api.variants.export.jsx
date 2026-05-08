@@ -1,4 +1,5 @@
 import { authenticate } from "../shopify.server.js";
+import prisma from "../db.server.js";
 
 const fetchAllVariantMetafields = async (admin, variantId) => {
   let hasNextPage = true;
@@ -44,10 +45,19 @@ const fetchAllVariantMetafields = async (admin, variantId) => {
 };
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   const body = await request.json();
   const ids = body.ids || [];
+
+  const BULK_THRESHOLD = 50;
+
+  if (ids.length > BULK_THRESHOLD) {
+    return new Response(JSON.stringify({ strategy: "bulk", ids }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const response = await admin.graphql(
     `
@@ -123,6 +133,19 @@ export const action = async ({ request }) => {
   const csv = rows
     .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
     .join("\n");
+    
+  try {
+    await prisma.actionLog.create({
+      data: {
+        shop: session.shop,
+        action: "VARIANT_EXPORT",
+        status: "SUCCESS",
+        details: JSON.stringify({ itemsExported: variantsWithMetafields.length })
+      }
+    });
+  } catch (err) {
+    console.error("Failed to log export action:", err);
+  }
     
   return new Response(csv, {
     status: 200,

@@ -32,3 +32,12 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model ActionLog {
+  id        String   @id @default(uuid())
+  shop      String
+  action    String
+  status    String
+  details   String?
+  createdAt DateTime @default(now())
+}

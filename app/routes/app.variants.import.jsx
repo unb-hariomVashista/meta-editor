@@ -1,23 +1,14 @@
-import { Form, useActionData, useNavigation } from "react-router";
-import { authenticate } from "../shopify.server.js";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
-export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const file = formData.get("file");
+export default function VariantImport() {
+  const [fileSelected, setFileSelected] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [importErrors, setImportErrors] = useState([]);
+  const fileInputRef = useRef(null);
 
-  if (!file || typeof file === "string") {
-    return { error: "Please upload a valid CSV file." };
-  }
-
-  const csvText = await file.text();
-  const lines = csvText.trim().split('\n');
-  if (lines.length < 2) {
-    return { error: "CSV file is empty or missing data rows." };
-  }
-
-  // Simple CSV parser that respects quotes
   const parseLine = (line) => {
     const matches = line.match(/(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g);
     if (!matches) return [];
@@ -31,94 +22,131 @@ export const action = async ({ request }) => {
     });
   };
 
-  const headers = parseLine(lines[0]).map(h => h.trim().toLowerCase());
-  
-  // Find indices based on expected headers (handling both "namespace" and "names")
-  const gidIdx = headers.findIndex(h => h.includes("variant gid"));
-  const nsIdx = headers.findIndex(h => h.includes("namespace") || h.includes("names"));
-  const keyIdx = headers.findIndex(h => h.includes("key"));
-  const typeIdx = headers.findIndex(h => h.includes("type"));
-  const valIdx = headers.findIndex(h => h.includes("value"));
+  const handleImport = async (e) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    setImportErrors([]);
+    setIsSubmitting(true);
+    setProgress(null);
 
-  if (gidIdx === -1 || nsIdx === -1 || keyIdx === -1 || typeIdx === -1 || valIdx === -1) {
-    return { error: "CSV is missing required headers (variant gid, metafield namespace/names, metafield key, metafield type, metafield value)." };
-  }
-
-  const metafields = [];
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseLine(lines[i]);
-    if (row.length < headers.length) continue;
-
-    const gid = row[gidIdx].trim();
-    const namespace = row[nsIdx].trim();
-    const key = row[keyIdx].trim();
-    const type = row[typeIdx].trim();
-    const value = row[valIdx].trim();
-
-    // Skip empty values
-    if (!gid || !namespace || !key || !type) continue;
-
-    metafields.push({
-      ownerId: gid,
-      namespace,
-      key,
-      type,
-      value
-    });
-  }
-
-  if (metafields.length === 0) {
-    return { error: "No valid metafields found to import." };
-  }
-
-  // Batch process metafields (Shopify limits metafieldsSet to 25 items per request)
-  const chunks = [];
-  for (let i = 0; i < metafields.length; i += 25) {
-    chunks.push(metafields.slice(i, i + 25));
-  }
-
-  let successCount = 0;
-  let errors = [];
-
-  for (const chunk of chunks) {
-    const response = await admin.graphql(
-      `
-        mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
-          metafieldsSet(metafields: $metafields) {
-            metafields {
-              id
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `,
-      {
-        variables: { metafields: chunk }
-      }
-    );
-
-    const json = await response.json();
-    const userErrors = json.data?.metafieldsSet?.userErrors || [];
-    
-    if (userErrors.length > 0) {
-      errors.push(...userErrors.map(e => e.message));
-    } else {
-      successCount += chunk.length;
+    const file = fileInputRef.current?.files[0];
+    if (!file) {
+      setErrorMsg("Please select a valid CSV file.");
+      setIsSubmitting(false);
+      return;
     }
-  }
 
-  return { success: `Successfully imported ${successCount} variant metafields.`, errors };
-};
+    try {
+      const text = await file.text();
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) {
+        throw new Error("CSV file is empty or missing data rows.");
+      }
 
-export default function VariantImport() {
-  const actionData = useActionData();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+      const headers = parseLine(lines[0]).map(h => h.trim().toLowerCase());
+      
+      const gidIdx = headers.findIndex(h => h === "variant gid" || (h.includes("gid") && !h.includes("product")));
+      const nsIdx = headers.findIndex(h => h.includes("namespace") || h.includes("names"));
+      const keyIdx = headers.findIndex(h => h.includes("key"));
+      const typeIdx = headers.findIndex(h => h.includes("type"));
+      const valIdx = headers.findIndex(h => h.includes("value"));
 
-  const [fileSelected, setFileSelected] = useState(false);
+      if (gidIdx === -1 || nsIdx === -1 || keyIdx === -1 || typeIdx === -1 || valIdx === -1) {
+        throw new Error("CSV is missing required headers (variant gid, metafield namespace, key, type, value).");
+      }
+
+      const metafields = [];
+      let skippedEmptyRows = 0;
+      let invalidTypeRows = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const row = parseLine(lines[i]);
+        if (row.length < headers.length) continue;
+
+        const gid = row[gidIdx]?.trim();
+        const namespace = row[nsIdx]?.trim();
+        const key = row[keyIdx]?.trim();
+        const type = row[typeIdx]?.trim();
+        const value = row[valIdx]?.trim();
+
+        if (!gid && !namespace && !key) continue; // Purely empty row
+
+        if (!gid || !namespace || !key || !type) {
+          skippedEmptyRows++;
+          continue;
+        }
+
+        if (!gid.startsWith("gid://shopify/ProductVariant/")) {
+          invalidTypeRows++;
+          continue;
+        }
+
+        metafields.push({
+          ownerId: gid,
+          namespace,
+          key,
+          type,
+          value
+        });
+      }
+
+      if (metafields.length === 0) {
+        let msg = "No valid metafields found to import.";
+        if (invalidTypeRows > 0) msg += ` ${invalidTypeRows} rows were skipped because they contained Product GIDs instead of Variant GIDs.`;
+        throw new Error(msg);
+      }
+
+      const CHUNK_SIZE = 500;
+      let totalImported = 0;
+      let accumulatedErrors = [];
+
+      setProgress({ current: 0, total: metafields.length });
+      const token = await window.shopify.idToken();
+
+      for (let i = 0; i < metafields.length; i += CHUNK_SIZE) {
+        const batch = metafields.slice(i, i + CHUNK_SIZE);
+        const isFinal = (i + CHUNK_SIZE) >= metafields.length;
+
+        const res = await fetch("/app/api/bulk-import-chunk", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            metafields: batch,
+            type: "variants",
+            isFinal,
+            totalImported,
+            totalErrors: accumulatedErrors.length
+          })
+        });
+
+        if (!res.ok) {
+           throw new Error("Server error during import chunk processing.");
+        }
+
+        const data = await res.json();
+        totalImported += data.successCount || 0;
+        if (data.errors && data.errors.length > 0) {
+          accumulatedErrors.push(...data.errors);
+        }
+
+        setProgress({ current: Math.min(i + CHUNK_SIZE, metafields.length), total: metafields.length });
+      }
+
+      setSuccessMsg(`Successfully imported ${totalImported} variant metafields.`);
+      if (accumulatedErrors.length > 0) {
+        setImportErrors(accumulatedErrors);
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || "An unexpected error occurred during processing.");
+    }
+
+    setIsSubmitting(false);
+  };
 
   return (
     <div>
@@ -131,37 +159,50 @@ export default function VariantImport() {
           </code>
         </div>
         
-        {actionData?.error && (
+        {errorMsg && (
           <div style={{ color: "#d22d2d", backgroundColor: "#fff4f4", marginBottom: "15px", padding: "10px", border: "1px solid #d22d2d", borderRadius: "4px" }}>
-            <strong>Error: </strong> {actionData.error}
+            <strong>Error: </strong> {errorMsg}
           </div>
         )}
 
-        {actionData?.success && (
+        {successMsg && (
           <div style={{ color: "#008060", backgroundColor: "#f3fcf8", marginBottom: "15px", padding: "10px", border: "1px solid #008060", borderRadius: "4px" }}>
-            <strong>Success: </strong> {actionData.success}
-            {actionData.errors?.length > 0 && (
+            <strong>Success: </strong> {successMsg}
+            {importErrors.length > 0 && (
               <div style={{ color: "#d22d2d", marginTop: "10px" }}>
                 <strong>Warnings/Errors during import:</strong>
-                <ul style={{ marginTop: "5px", marginLeft: "20px" }}>
-                  {actionData.errors.map((err, i) => <li key={i}>{err}</li>)}
+                <ul style={{ marginTop: "5px", marginLeft: "20px", maxHeight: "150px", overflowY: "auto" }}>
+                  {importErrors.map((err, i) => <li key={i}>{err}</li>)}
                 </ul>
               </div>
             )}
           </div>
         )}
 
-        <Form method="post" encType="multipart/form-data">
+        <form onSubmit={handleImport}>
           <div style={{ marginBottom: "15px" }}>
             <input 
               type="file" 
               name="file" 
               accept=".csv" 
               required
+              ref={fileInputRef}
               onChange={(e) => setFileSelected(e.target.files.length > 0)}
               style={{ display: "block", padding: "10px 0" }}
             />
           </div>
+          
+          {progress && (
+            <div style={{ marginBottom: "15px" }}>
+              <div style={{ fontSize: "13px", marginBottom: "5px", color: "#5c5f62" }}>
+                Importing: {progress.current} / {progress.total} metafields
+              </div>
+              <div style={{ width: "100%", height: "8px", backgroundColor: "#e4e5e7", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ width: `${Math.round((progress.current / progress.total) * 100)}%`, height: "100%", backgroundColor: "#008060", transition: "width 0.3s ease" }}></div>
+              </div>
+            </div>
+          )}
+
           <button 
             type="submit" 
             disabled={!fileSelected || isSubmitting}
@@ -177,7 +218,7 @@ export default function VariantImport() {
           >
             {isSubmitting ? "Importing..." : "Upload & Import"}
           </button>
-        </Form>
+        </form>
       </s-section>
     </div>
   );

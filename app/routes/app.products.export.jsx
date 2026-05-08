@@ -40,6 +40,17 @@ export const loader = async ({ request }) => {
     variables.query = queryParts.join(" AND ");
   }
 
+  // Check for active bulk operation
+  const bulkResponse = await admin.graphql(`
+    query {
+      currentBulkOperation {
+        id
+        status
+      }
+    }
+  `);
+  const bulkJson = await bulkResponse.json();
+
   const response = await admin.graphql(
     `
       query GetProducts($after: String, $before: String, $first: Int, $last: Int, $query: String){
@@ -75,7 +86,11 @@ export const loader = async ({ request }) => {
     { variables },
   );
   const json = await response.json();
-  return json;
+  
+  return {
+    products: json.data.products,
+    currentBulkOperation: bulkJson.data.currentBulkOperation
+  };
 };
 
 
@@ -89,19 +104,20 @@ function ProductExport() {
   const searchQuery = searchParams.get("search") || "";
 
   const [selectedProducts, setSelectedProducts] = useState(new Set());
-  const pageIds = data.data.products.nodes.map((node) => {
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  const pageIds = data.products.nodes.map((node) => {
     return node.id;
   });
   const isAllSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedProducts.has(id));
 
   const handleNext = () => {
-    const cursor = data.data.products.pageInfo.endCursor;
+    const cursor = data.products.pageInfo.endCursor;
     navigate(`?cursor=${cursor}&direction=next&type=${currentType}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
   };
 
   const handlePrev = () => {
-    const cursor = data.data.products.pageInfo.startCursor;
+    const cursor = data.products.pageInfo.startCursor;
     navigate(`?cursor=${cursor}&direction=prev&type=${currentType}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`);
   };
 
@@ -154,11 +170,13 @@ function ProductExport() {
     });
   };
 
+  const [isExportingSelected, setIsExportingSelected] = useState(false);
+
   const exportSelected = async () => {
     const ids = Array.from(selectedProducts);
+    setIsExportingSelected(true);
 
     try {
-      // Manually retrieve the App Bridge session token to ensure the request is authenticated
       const token = await window.shopify.idToken();
 
       const response = await fetch("/app/api/products/export", {
@@ -173,26 +191,114 @@ function ProductExport() {
       if (!response.ok) {
         console.error("Export failed:", response.status, response.statusText);
         alert("Failed to export products. Please try again.");
+        setIsExportingSelected(false);
         return;
       }
 
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (data.strategy === "bulk") {
+          // Switch to bulk polling logic
+          setIsProcessingBulk(true);
+          await handleBulkExportProcess("products", data.ids);
+          setIsProcessingBulk(false);
+          setIsExportingSelected(false);
+          return;
+        }
+      }
+
+      // Direct download (small selection)
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-
       const a = document.createElement("a");
       a.href = url;
       a.download = "products-metafields.csv";
-
       document.body.appendChild(a);
       a.click();
-
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error during export:", error);
       alert("An error occurred during export.");
     }
+    setIsExportingSelected(false);
   };
+
+  const handleBulkExportProcess = async (type, ids = null) => {
+    const token = await window.shopify.idToken();
+    let res = await fetch("/app/api/bulk-export/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ type, ids })
+    });
+    let json = await res.json();
+    
+    if (json.data?.bulkOperationRunQuery?.userErrors?.length > 0) {
+      throw new Error(json.data.bulkOperationRunQuery.userErrors[0].message);
+    }
+
+    let status = "RUNNING";
+    let url = null;
+    while (status === "RUNNING" || status === "CREATED") {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      let pollRes = await fetch("/app/api/bulk-export/poll", {
+         headers: { "Authorization": `Bearer ${token}` }
+      });
+      let pollJson = await pollRes.json();
+      const op = pollJson.data?.currentBulkOperation;
+      if (!op) throw new Error("Could not find bulk operation.");
+      
+      status = op.status;
+      if (status === "COMPLETED") {
+        url = op.url;
+        break;
+      } else if (status === "FAILED" || status === "CANCELED") {
+        throw new Error(`Bulk operation ${status.toLowerCase()}.`);
+      }
+    }
+
+    if (url) {
+      let dlRes = await fetch("/app/api/bulk-export/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ type, url })
+      });
+      
+      if (!dlRes.ok) throw new Error("Failed to generate CSV");
+      
+      const blob = await dlRes.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${type}-metafields.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } else {
+      alert("No data found to export.");
+    }
+  };
+
+  const exportAll = async () => {
+    setIsProcessingBulk(true);
+    try {
+      await handleBulkExportProcess("products");
+    } catch (e) {
+      console.error(e);
+      alert("Error exporting all products: " + e.message);
+    }
+    setIsProcessingBulk(false);
+  };
+
+  useEffect(() => {
+    const op = data.currentBulkOperation;
+    if (op && (op.status === "RUNNING" || op.status === "CREATED")) {
+      setIsProcessingBulk(true);
+      handleBulkExportProcess("products");
+    }
+  }, []);
 
   return (
     <div>
@@ -220,10 +326,37 @@ function ProductExport() {
               )}
             </Form>
           </div>
-          <div className="export-buttons">
+          <div className="export-buttons" style={{ display: "flex", gap: "10px" }}>
+            <button 
+              onClick={exportAll} 
+              disabled={isProcessingBulk}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #ccc",
+                background: isProcessingBulk ? "#e4e5e7" : "#fff",
+                cursor: isProcessingBulk ? "not-allowed" : "pointer",
+                fontSize: "14px"
+              }}
+            >
+              {isProcessingBulk ? "Exporting... (this may take a while)" : "Export All Products"}
+            </button>
             {selectedProducts.size > 0 ? (
-              <button onClick={exportSelected}>
-                Export {selectedProducts.size} products
+              <button 
+                onClick={exportSelected}
+                disabled={isExportingSelected || isProcessingBulk}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: (isExportingSelected || isProcessingBulk) ? "#e4e5e7" : "#000",
+                  color: (isExportingSelected || isProcessingBulk) ? "#8c9196" : "#fff",
+                  cursor: (isExportingSelected || isProcessingBulk) ? "not-allowed" : "pointer",
+                  fontSize: "14px",
+                  fontWeight: "600"
+                }}
+              >
+                {isExportingSelected ? "Exporting..." : `Export ${selectedProducts.size} selected`}
               </button>
             ) : null}
           </div>
@@ -243,7 +376,7 @@ function ProductExport() {
             </s-table-header>
           </s-table-header-row>
           <s-table-body>
-            {data.data.products.nodes.map((node) => {
+            {data.products.nodes.map((node) => {
               return (
                 <s-table-row key={node.id}>
                   <s-table-cell>
@@ -279,17 +412,19 @@ function ProductExport() {
           <button
             onClick={handlePrev}
             className="pagination-button"
-            disabled={!data.data.products.pageInfo.hasPreviousPage}
+            disabled={!data.products.pageInfo.hasPreviousPage}
           >
+            <svg style={{ marginRight: "6px" }} width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
             Prev
           </button>
-          <p>1-25</p>
+          <span className="pagination-info">Page Results</span>
           <button
             onClick={handleNext}
             className="pagination-button"
-            disabled={!data.data.products.pageInfo.hasNextPage}
+            disabled={!data.products.pageInfo.hasNextPage}
           >
             Next
+            <svg style={{ marginLeft: "6px" }} width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </button>
         </div>
       </s-section>
