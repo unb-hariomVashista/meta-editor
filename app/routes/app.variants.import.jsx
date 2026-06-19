@@ -1,5 +1,11 @@
 import { useState, useRef } from "react";
 
+export const loader = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server.js");
+  await authenticate.admin(request);
+  return null;
+};
+
 export default function VariantImport() {
   const [fileSelected, setFileSelected] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

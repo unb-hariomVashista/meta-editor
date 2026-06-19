@@ -1,6 +1,12 @@
 import React from "react";
 import { Outlet, useNavigate, useLocation } from "react-router";
 
+export const loader = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server.js");
+  await authenticate.admin(request);
+  return null;
+};
+
 function Products() {
   const navigate = useNavigate();
   const location = useLocation();
