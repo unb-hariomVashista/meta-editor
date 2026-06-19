@@ -1,5 +1,9 @@
 import { authenticate } from "../shopify.server";
 
+export const loader = async () => {
+  return new Response("Method Not Allowed", { status: 405 });
+};
+
 export const action = async ({ request }) => {
   const { topic, shop, payload } = await authenticate.webhook(request);
 
