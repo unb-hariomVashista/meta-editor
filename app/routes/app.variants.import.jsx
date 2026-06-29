@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
+import { authenticate } from "../shopify.server.js";
 
 export const loader = async ({ request }) => {
-  const { authenticate } = await import("../shopify.server.js");
   await authenticate.admin(request);
   return null;
 };
@@ -155,77 +155,103 @@ export default function VariantImport() {
   };
 
   return (
-    <div>
-      <s-section>
-        <div style={{ marginBottom: "20px" }}>
-          <h2 style={{ fontSize: "1.5rem", marginBottom: "10px" }}>Import Variant Metafields</h2>
-          <p>Upload a CSV file containing the following headers:</p>
-          <code style={{ display: "block", padding: "10px", background: "#f4f6f8", margin: "10px 0", borderRadius: "4px" }}>
-            variant gid, variant title, product handle, product title, metafield namespace, metafield key, metafield type, metafield value
-          </code>
-        </div>
-        
-        {errorMsg && (
-          <div style={{ color: "#d22d2d", backgroundColor: "#fff4f4", marginBottom: "15px", padding: "10px", border: "1px solid #d22d2d", borderRadius: "4px" }}>
-            <strong>Error: </strong> {errorMsg}
-          </div>
-        )}
-
-        {successMsg && (
-          <div style={{ color: "#008060", backgroundColor: "#f3fcf8", marginBottom: "15px", padding: "10px", border: "1px solid #008060", borderRadius: "4px" }}>
-            <strong>Success: </strong> {successMsg}
-            {importErrors.length > 0 && (
-              <div style={{ color: "#d22d2d", marginTop: "10px" }}>
-                <strong>Warnings/Errors during import:</strong>
-                <ul style={{ marginTop: "5px", marginLeft: "20px", maxHeight: "150px", overflowY: "auto" }}>
-                  {importErrors.map((err, i) => <li key={i}>{err}</li>)}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        <form onSubmit={handleImport}>
-          <div style={{ marginBottom: "15px" }}>
-            <input 
-              type="file" 
-              name="file" 
-              accept=".csv" 
-              required
-              ref={fileInputRef}
-              onChange={(e) => setFileSelected(e.target.files.length > 0)}
-              style={{ display: "block", padding: "10px 0" }}
-            />
+    <div className="page-section-container">
+      <div className="import-wrapper-grid">
+        {/* CSV Format Guide */}
+        <div className="import-guide-card">
+          <h3>CSV Structure Requirements</h3>
+          <p>Please ensure your CSV file has the exact headers shown below. Incorrect headers or structures will fail validation.</p>
+          <div className="csv-header-display">
+            <code>variant gid, variant title, product handle, product title, metafield namespace, metafield key, metafield type, metafield value</code>
           </div>
           
-          {progress && (
-            <div style={{ marginBottom: "15px" }}>
-              <div style={{ fontSize: "13px", marginBottom: "5px", color: "#5c5f62" }}>
-                Importing: {progress.current} / {progress.total} metafields
-              </div>
-              <div style={{ width: "100%", height: "8px", backgroundColor: "#e4e5e7", borderRadius: "4px", overflow: "hidden" }}>
-                <div style={{ width: `${Math.round((progress.current / progress.total) * 100)}%`, height: "100%", backgroundColor: "#008060", transition: "width 0.3s ease" }}></div>
-              </div>
+          <div className="guide-points">
+            <div className="guide-point-item">
+              <span className="badge-bullet">1</span>
+              <span><strong>variant gid</strong> must start with <code>gid://shopify/ProductVariant/...</code></span>
+            </div>
+            <div className="guide-point-item">
+              <span className="badge-bullet">2</span>
+              <span><strong>metafield type</strong> must match valid Shopify types (e.g. <code>single_line_text_field</code>, <code>json</code>, etc.)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Upload Form Card */}
+        <div className="import-upload-card">
+          <h3>Upload Data Sheet</h3>
+          <p className="subtitle">Choose your prepared CSV file to start the bulk sync</p>
+
+          {errorMsg && (
+            <div className="alert alert-error">
+              <strong>Import Error:</strong> {errorMsg}
             </div>
           )}
 
-          <button 
-            type="submit" 
-            disabled={!fileSelected || isSubmitting}
-            style={{ 
-              padding: "8px 16px", 
-              backgroundColor: (!fileSelected || isSubmitting) ? "#e4e5e7" : "#000",
-              color: (!fileSelected || isSubmitting) ? "#8c9196" : "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: (!fileSelected || isSubmitting) ? "not-allowed" : "pointer",
-              fontWeight: "bold"
-            }}
-          >
-            {isSubmitting ? "Importing..." : "Upload & Import"}
-          </button>
-        </form>
-      </s-section>
+          {successMsg && (
+            <div className="alert alert-success">
+              <strong>Import Success:</strong> {successMsg}
+              {importErrors.length > 0 && (
+                <div className="import-warnings">
+                  <strong>Sync Warnings:</strong>
+                  <ul>
+                    {importErrors.map((err, i) => <li key={i}>{err}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <form onSubmit={handleImport} className="upload-form">
+            <div className="file-uploader-box">
+              <input 
+                type="file" 
+                name="file" 
+                accept=".csv" 
+                required
+                ref={fileInputRef}
+                id="csv-file-input"
+                onChange={(e) => setFileSelected(e.target.files.length > 0)}
+                className="file-input-hidden"
+              />
+              <label htmlFor="csv-file-input" className={`file-upload-label ${fileSelected ? 'has-file' : ''}`}>
+                <div className="upload-icon">📥</div>
+                <div className="upload-text">
+                  {fileSelected ? (
+                    <strong>{fileInputRef.current?.files[0]?.name}</strong>
+                  ) : (
+                    <span>Click to browse or drop your CSV file here</span>
+                  )}
+                </div>
+                <div className="upload-subtext">Supports only .csv spreadsheets</div>
+              </label>
+            </div>
+
+            {progress && (
+              <div className="progress-bar-container">
+                <div className="progress-text-row">
+                  <span>Syncing metafield data...</span>
+                  <strong>{progress.current} / {progress.total}</strong>
+                </div>
+                <div className="progress-track">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              disabled={!fileSelected || isSubmitting}
+              className="btn btn-primary btn-block"
+            >
+              {isSubmitting ? "Syncing Bulk Data..." : "Upload & Run Sync"}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

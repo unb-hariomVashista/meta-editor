@@ -1,9 +1,8 @@
 import { Form, useLoaderData, useNavigate, useSearchParams } from "react-router";
-import "../styles/product-export.css";
 import { useEffect, useState } from "react";
+import { authenticate } from "../shopify.server.js";
 
 export const loader = async ({ request }) => {
-  const { authenticate } = await import("../shopify.server.js");
   const { admin } = await authenticate.admin(request);
 
   const url = new URL(request.url);
@@ -131,17 +130,6 @@ function ProductExport() {
     setSelectedProducts(new Set());
   };
 
-  const buttonStyle = (isActive) => ({
-    padding: "6px 12px",
-    borderRadius: "6px",
-    border: "none",
-    backgroundColor: isActive ? "#e4e5e7" : "transparent",
-    color: isActive ? "#000" : "#5c5f62",
-    fontWeight: isActive ? "600" : "400",
-    cursor: "pointer",
-    transition: "background-color 0.2s ease",
-    fontSize: "14px",
-  });
 
   const handleSelection = (id) => {
     setSelectedProducts((prev) => {
@@ -301,133 +289,142 @@ function ProductExport() {
   }, []);
 
   return (
-    <div>
-      <s-section>
-        <div className="product-container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
-          <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-            <div className="product-status-container" style={{ display: "flex", gap: "4px" }}>
-              <button style={buttonStyle(currentType === "all")} onClick={() => handleFilter("all")}>All</button>
-              <button style={buttonStyle(currentType === "active")} onClick={() => handleFilter("active")}>Active</button>
-              <button style={buttonStyle(currentType === "draft")} onClick={() => handleFilter("draft")}>Draft</button>
-            </div>
-            <Form method="get" style={{ display: "flex", gap: "5px" }} onSubmit={() => setSelectedProducts(new Set())}>
-              <input type="hidden" name="type" value={currentType} />
-              <input 
-                type="text" 
-                name="search" 
-                key={searchQuery}
-                placeholder="Search SKUs, handles, titles..." 
-                defaultValue={searchQuery}
-                style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", width: "250px", fontSize: "14px" }}
-              />
-              <button type="submit" style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#f4f6f8", cursor: "pointer", fontSize: "14px" }}>Search</button>
-              {searchQuery && (
-                <button type="button" onClick={handleClearSearch} style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontSize: "14px", color: "#d22d2d" }}>Clear</button>
-              )}
-            </Form>
+    <div className="page-section-container">
+      {/* Search and Action Toolbar */}
+      <div className="action-toolbar">
+        <div className="toolbar-left">
+          <div className="segmented-filter-control">
+            <button className={`filter-btn ${currentType === "all" ? "active" : ""}`} onClick={() => handleFilter("all")}>All</button>
+            <button className={`filter-btn ${currentType === "active" ? "active" : ""}`} onClick={() => handleFilter("active")}>Active</button>
+            <button className={`filter-btn ${currentType === "draft" ? "active" : ""}`} onClick={() => handleFilter("draft")}>Draft</button>
           </div>
-          <div className="export-buttons" style={{ display: "flex", gap: "10px" }}>
+          
+          <Form method="get" className="search-form-control" onSubmit={() => setSelectedProducts(new Set())}>
+            <input type="hidden" name="type" value={currentType} />
+            <input 
+              type="text" 
+              name="search" 
+              key={searchQuery}
+              placeholder="Search products..." 
+              defaultValue={searchQuery}
+              className="search-input"
+            />
+            <button type="submit" className="search-btn">Search</button>
+            {searchQuery && (
+              <button type="button" onClick={handleClearSearch} className="clear-btn">Clear</button>
+            )}
+          </Form>
+        </div>
+
+        <div className="toolbar-right">
+          <button 
+            onClick={exportAll} 
+            disabled={isProcessingBulk}
+            className="btn btn-outline"
+          >
+            {isProcessingBulk ? "Exporting..." : "Export All Products"}
+          </button>
+          {selectedProducts.size > 0 && (
             <button 
-              onClick={exportAll} 
-              disabled={isProcessingBulk}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid #ccc",
-                background: isProcessingBulk ? "#e4e5e7" : "#fff",
-                cursor: isProcessingBulk ? "not-allowed" : "pointer",
-                fontSize: "14px"
-              }}
+              onClick={exportSelected}
+              disabled={isExportingSelected || isProcessingBulk}
+              className="btn btn-primary"
             >
-              {isProcessingBulk ? "Exporting... (this may take a while)" : "Export All Products"}
+              {isExportingSelected ? "Exporting..." : `Export ${selectedProducts.size} selected`}
             </button>
-            {selectedProducts.size > 0 ? (
-              <button 
-                onClick={exportSelected}
-                disabled={isExportingSelected || isProcessingBulk}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "none",
-                  background: (isExportingSelected || isProcessingBulk) ? "#e4e5e7" : "#000",
-                  color: (isExportingSelected || isProcessingBulk) ? "#8c9196" : "#fff",
-                  cursor: (isExportingSelected || isProcessingBulk) ? "not-allowed" : "pointer",
-                  fontSize: "14px",
-                  fontWeight: "600"
-                }}
-              >
-                {isExportingSelected ? "Exporting..." : `Export ${selectedProducts.size} selected`}
-              </button>
-            ) : null}
-          </div>
+          )}
         </div>
-        <s-table>
-          <s-table-header-row>
-            <s-table-header></s-table-header>
-            <s-table-header>Name</s-table-header>
-            <s-table-header>Status</s-table-header>
-            <s-table-header>Number of Metafields</s-table-header>
-            <s-table-header>
-              <input
-                type="checkbox"
-                checked={isAllSelected}
-                onChange={() => handleAllSelection(pageIds)}
-              />
-            </s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {data.products.nodes.map((node) => {
-              return (
-                <s-table-row key={node.id}>
-                  <s-table-cell>
-                    <img
-                      src={node.featuredMedia?.preview?.image?.url}
-                      width={40}
-                      height={40}
-                    />
-                  </s-table-cell>
-                  <s-table-cell>{node.title}</s-table-cell>
-                  <s-table-cell>{node.status}</s-table-cell>
-                  <s-table-cell>
-                    {node.metafields.nodes.length == 0
-                      ? "0"
-                      : node.metafields.nodes.length > 5
-                        ? "5+"
-                        : node.metafields.nodes.length}{" "}
-                    metafields
-                  </s-table-cell>
-                  <s-table-cell>
-                    <input
-                      type="checkbox"
-                      checked={selectedProducts.has(node.id)}
-                      onChange={() => handleSelection(node.id)}
-                    />
-                  </s-table-cell>
-                </s-table-row>
-              );
-            })}
-          </s-table-body>
-        </s-table>
-        <div className="pagination-container">
-          <button
-            onClick={handlePrev}
-            className="pagination-button"
-            disabled={!data.products.pageInfo.hasPreviousPage}
-          >
-            <svg style={{ marginRight: "6px" }} width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            Prev
-          </button>
-          <span className="pagination-info">Page Results</span>
-          <button
-            onClick={handleNext}
-            className="pagination-button"
-            disabled={!data.products.pageInfo.hasNextPage}
-          >
-            Next
-            <svg style={{ marginLeft: "6px" }} width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-          </button>
-        </div>
-      </s-section>
+      </div>
+
+      {/* Styled Grid / Table Container */}
+      <div className="table-card">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th style={{ width: "60px" }}>Image</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Metafields</th>
+              <th style={{ width: "40px" }}>
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={() => handleAllSelection(pageIds)}
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.products.nodes.length === 0 ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: "center", padding: "40px" }}>
+                  <p style={{ color: "#6d7175", margin: 0 }}>No products match your filters.</p>
+                </td>
+              </tr>
+            ) : (
+              data.products.nodes.map((node) => {
+                return (
+                  <tr key={node.id}>
+                    <td>
+                      {node.featuredMedia?.preview?.image?.url ? (
+                        <img
+                          src={node.featuredMedia.preview.image.url}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="table-product-img"
+                        />
+                      ) : (
+                        <div className="table-product-img-placeholder" />
+                      )}
+                    </td>
+                    <td className="table-title-cell">{node.title}</td>
+                    <td>
+                      <span className={`status-pill ${node.status.toLowerCase()}`}>
+                        {node.status}
+                      </span>
+                    </td>
+                    <td>
+                      {node.metafields.nodes.length === 0
+                        ? "0"
+                        : node.metafields.nodes.length > 5
+                          ? "5+"
+                          : node.metafields.nodes.length}{" "}
+                      metafields
+                    </td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedProducts.has(node.id)}
+                        onChange={() => handleSelection(node.id)}
+                      />
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="pagination-bar">
+        <button
+          onClick={handlePrev}
+          className="pagination-btn"
+          disabled={!data.products.pageInfo.hasPreviousPage}
+        >
+          &larr; Prev
+        </button>
+        <span className="pagination-text">Page Results</span>
+        <button
+          onClick={handleNext}
+          className="pagination-btn"
+          disabled={!data.products.pageInfo.hasNextPage}
+        >
+          Next &rarr;
+        </button>
+      </div>
     </div>
   );
 }

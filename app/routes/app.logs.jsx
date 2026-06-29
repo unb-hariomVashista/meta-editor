@@ -42,65 +42,57 @@ export default function Logs() {
   };
 
   return (
-    <div>
-      <s-section>
-        <div style={{ marginBottom: "20px" }}>
-          <h2>Action Logs</h2>
-          <p>View the history of your imports and exports.</p>
-        </div>
-        
-        <s-table>
-          <s-table-header-row>
-            <s-table-header>Date</s-table-header>
-            <s-table-header>Action</s-table-header>
-            <s-table-header>Status</s-table-header>
-            <s-table-header>Details</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
+    <div className="page-section-container">
+      <div className="dashboard-section-header">
+        <h2>Action Logs</h2>
+        <p>View the history of your imports and exports.</p>
+      </div>
+
+      <div className="table-card">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
             {logs.length === 0 ? (
-              <s-table-row>
-                <s-table-cell colSpan={4}>No logs found.</s-table-cell>
-              </s-table-row>
+              <tr>
+                <td colSpan={4} style={{ textAlign: "center", padding: "40px" }}>
+                  <p style={{ color: "#6d7175", margin: 0 }}>No logs found.</p>
+                </td>
+              </tr>
             ) : (
               logs.map((log) => (
-                <s-table-row key={log.id}>
-                  <s-table-cell>{new Date(log.createdAt).toLocaleString()}</s-table-cell>
-                  <s-table-cell>
+                <tr key={log.id}>
+                  <td className="timestamp-cell">
+                    {new Date(log.createdAt).toLocaleString()}
+                  </td>
+                  <td className="action-cell">
                     <strong>{log.action.replace("_", " ")}</strong>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <span style={{
-                      padding: "4px 8px", 
-                      borderRadius: "4px", 
-                      background: log.status === "SUCCESS" ? "#f3fcf8" : log.status === "ERROR" ? "#fff4f4" : "#fff8e1",
-                      color: log.status === "SUCCESS" ? "#008060" : log.status === "ERROR" ? "#d22d2d" : "#916a00",
-                      fontWeight: "bold",
-                      fontSize: "12px"
-                    }}>
+                  </td>
+                  <td>
+                    <span className={`status-pill ${log.status.toLowerCase()}`}>
                       {log.status}
                     </span>
-                  </s-table-cell>
-                  <s-table-cell>
+                  </td>
+                  <td>
                     <button 
                       onClick={() => handleDownload(log.id, log.action)}
-                      style={{ 
-                        padding: "6px 12px", 
-                        cursor: "pointer", 
-                        borderRadius: "4px", 
-                        border: "1px solid #ccc",
-                        background: "#fff",
-                        fontSize: "13px"
-                      }}
+                      className="btn-download"
                     >
                       Download JSON Log
                     </button>
-                  </s-table-cell>
-                </s-table-row>
+                  </td>
+                </tr>
               ))
             )}
-          </s-table-body>
-        </s-table>
-      </s-section>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

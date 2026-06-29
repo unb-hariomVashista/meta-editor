@@ -1,9 +1,8 @@
 import { Form, useLoaderData, useNavigate, useSearchParams } from "react-router";
-import "../styles/product-export.css";
 import { useEffect, useState } from "react";
+import { authenticate } from "../shopify.server.js";
 
 export const loader = async ({ request }) => {
-  const { authenticate } = await import("../shopify.server.js");
   const { admin } = await authenticate.admin(request);
 
   const url = new URL(request.url);
@@ -287,127 +286,135 @@ function VariantExport() {
   }, []);
 
   return (
-    <div>
-      <s-section>
-        <div className="product-container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
-          <Form method="get" style={{ display: "flex", gap: "5px" }} onSubmit={() => setSelectedProducts(new Set())}>
+    <div className="page-section-container">
+      {/* Search and Action Toolbar */}
+      <div className="action-toolbar">
+        <div className="toolbar-left">
+          <Form method="get" className="search-form-control" onSubmit={() => setSelectedProducts(new Set())}>
             <input 
               type="text" 
               name="search" 
               key={searchQuery}
-              placeholder="Search SKUs, handles, titles..." 
+              placeholder="Search variants..." 
               defaultValue={searchQuery}
-              style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", width: "300px", fontSize: "14px" }}
+              className="search-input"
+              style={{ width: "320px" }}
             />
-            <button type="submit" style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#f4f6f8", cursor: "pointer", fontSize: "14px" }}>Search</button>
+            <button type="submit" className="search-btn">Search</button>
             {searchQuery && (
-              <button type="button" onClick={handleClearSearch} style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontSize: "14px", color: "#d22d2d" }}>Clear</button>
+              <button type="button" onClick={handleClearSearch} className="clear-btn">Clear</button>
             )}
           </Form>
-          <div className="export-buttons" style={{ display: "flex", gap: "10px" }}>
+        </div>
+
+        <div className="toolbar-right">
+          <button 
+            onClick={exportAll} 
+            disabled={isProcessingBulk}
+            className="btn btn-outline"
+          >
+            {isProcessingBulk ? "Exporting..." : "Export All Variants"}
+          </button>
+          {selectedProducts.size > 0 && (
             <button 
-              onClick={exportAll} 
-              disabled={isProcessingBulk}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid #ccc",
-                background: isProcessingBulk ? "#e4e5e7" : "#fff",
-                cursor: isProcessingBulk ? "not-allowed" : "pointer",
-                fontSize: "14px"
-              }}
+              onClick={exportSelected}
+              disabled={isExportingSelected || isProcessingBulk}
+              className="btn btn-primary"
             >
-              {isProcessingBulk ? "Exporting... (this may take a while)" : "Export All Variants"}
+              {isExportingSelected ? "Exporting..." : `Export ${selectedProducts.size} selected`}
             </button>
-            {selectedProducts.size > 0 ? (
-              <button 
-                onClick={exportSelected}
-                disabled={isExportingSelected || isProcessingBulk}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "none",
-                  background: (isExportingSelected || isProcessingBulk) ? "#e4e5e7" : "#000",
-                  color: (isExportingSelected || isProcessingBulk) ? "#8c9196" : "#fff",
-                  cursor: (isExportingSelected || isProcessingBulk) ? "not-allowed" : "pointer",
-                  fontSize: "14px",
-                  fontWeight: "600"
-                }}
-              >
-                {isExportingSelected ? "Exporting..." : `Export ${selectedProducts.size} selected`}
-              </button>
-            ) : null}
-          </div>
+          )}
         </div>
-        <s-table>
-          <s-table-header-row>
-            <s-table-header></s-table-header>
-            <s-table-header>Variant Name</s-table-header>
-            <s-table-header>Product</s-table-header>
-            <s-table-header>Number of Metafields</s-table-header>
-            <s-table-header>
-              <input
-                type="checkbox"
-                checked={isAllSelected}
-                onChange={() => handleAllSelection(pageIds)}
-              />
-            </s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {data.products.nodes.map((node) => {
-              return node.variants.nodes.map((variant) => {
-                return (
-                  <s-table-row key={variant.id}>
-                    <s-table-cell>
-                      <img
-                        src={variant.media?.nodes?.[0]?.preview?.image?.url || node.featuredMedia?.preview?.image?.url || ""}
-                        width={40}
-                        height={40}
-                      />
-                    </s-table-cell>
-                    <s-table-cell>{variant.title}</s-table-cell>
-                    <s-table-cell>{node.title}</s-table-cell>
-                    <s-table-cell>
-                      {variant.metafields.nodes.length == 0
-                        ? "0"
-                        : variant.metafields.nodes.length > 5
-                          ? "5+"
-                          : variant.metafields.nodes.length}{" "}
-                      metafields
-                    </s-table-cell>
-                    <s-table-cell>
-                      <input
-                        type="checkbox"
-                        checked={selectedProducts.has(variant.id)}
-                        onChange={() => handleSelection(variant.id)}
-                      />
-                    </s-table-cell>
-                  </s-table-row>
-                );
-              });
-            })}
-          </s-table-body>
-        </s-table>
-        <div className="pagination-container">
-          <button
-            onClick={handlePrev}
-            className="pagination-button"
-            disabled={!data.products.pageInfo.hasPreviousPage}
-          >
-            <svg style={{ marginRight: "6px" }} width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            Prev
-          </button>
-          <span className="pagination-info">Page Results</span>
-          <button
-            onClick={handleNext}
-            className="pagination-button"
-            disabled={!data.products.pageInfo.hasNextPage}
-          >
-            Next
-            <svg style={{ marginLeft: "6px" }} width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-          </button>
-        </div>
-      </s-section>
+      </div>
+
+      {/* Styled Grid / Table Container */}
+      <div className="table-card">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th style={{ width: "60px" }}>Image</th>
+              <th>Variant Title</th>
+              <th>Parent Product</th>
+              <th>Metafields</th>
+              <th style={{ width: "40px" }}>
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={() => handleAllSelection(pageIds)}
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.products.nodes.length === 0 ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: "center", padding: "40px" }}>
+                  <p style={{ color: "#6d7175", margin: 0 }}>No variants found matching your query.</p>
+                </td>
+              </tr>
+            ) : (
+              data.products.nodes.flatMap((node) => {
+                return node.variants.nodes.map((variant) => {
+                  const imageUrl = variant.media?.nodes?.[0]?.preview?.image?.url || node.featuredMedia?.preview?.image?.url || "";
+                  return (
+                    <tr key={variant.id}>
+                      <td>
+                        {imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt=""
+                            width={40}
+                            height={40}
+                            className="table-product-img"
+                          />
+                        ) : (
+                          <div className="table-product-img-placeholder" />
+                        )}
+                      </td>
+                      <td className="table-title-cell">{variant.title}</td>
+                      <td>{node.title}</td>
+                      <td>
+                        {variant.metafields.nodes.length === 0
+                          ? "0"
+                          : variant.metafields.nodes.length > 5
+                            ? "5+"
+                            : variant.metafields.nodes.length}{" "}
+                        metafields
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedProducts.has(variant.id)}
+                          onChange={() => handleSelection(variant.id)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                });
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="pagination-bar">
+        <button
+          onClick={handlePrev}
+          className="pagination-btn"
+          disabled={!data.products.pageInfo.hasPreviousPage}
+        >
+          &larr; Prev
+        </button>
+        <span className="pagination-text">Page Results</span>
+        <button
+          onClick={handleNext}
+          className="pagination-btn"
+          disabled={!data.products.pageInfo.hasNextPage}
+        >
+          Next &rarr;
+        </button>
+      </div>
     </div>
   );
 }
