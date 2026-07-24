@@ -39,6 +39,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      SHOPIFY_APP_URL: ${SHOPIFY_APP_URL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
