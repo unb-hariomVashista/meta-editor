@@ -65,6 +65,7 @@ export default function ProductImport() {
       const metafields = [];
       let skippedEmptyRows = 0;
       let invalidTypeRows = 0;
+      let skippedEmptyValueRows = 0;
 
       for (let i = 1; i < lines.length; i++) {
         const row = parseLine(lines[i]);
@@ -88,6 +89,11 @@ export default function ProductImport() {
           continue;
         }
 
+        if (!value) {
+          skippedEmptyValueRows++;
+          continue;
+        }
+
         metafields.push({
           ownerId: gid,
           namespace,
@@ -100,6 +106,7 @@ export default function ProductImport() {
       if (metafields.length === 0) {
         let msg = "No valid metafields found to import.";
         if (invalidTypeRows > 0) msg += ` ${invalidTypeRows} rows were skipped because they contained Variant GIDs instead of Product GIDs.`;
+        if (skippedEmptyValueRows > 0) msg += ` ${skippedEmptyValueRows} rows were skipped because they had an empty metafield value.`;
         throw new Error(msg);
       }
 
@@ -142,7 +149,9 @@ export default function ProductImport() {
         setProgress({ current: Math.min(i + CHUNK_SIZE, metafields.length), total: metafields.length });
       }
 
-      setSuccessMsg(`Successfully imported ${totalImported} product metafields.`);
+      let successMessage = `Successfully imported ${totalImported} product metafields.`;
+      if (skippedEmptyValueRows > 0) successMessage += ` ${skippedEmptyValueRows} rows with empty metafield values were skipped.`;
+      setSuccessMsg(successMessage);
       if (accumulatedErrors.length > 0) {
         setImportErrors(accumulatedErrors);
       }

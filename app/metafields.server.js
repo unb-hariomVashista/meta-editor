@@ -60,40 +60,16 @@ export const mergeMetafields = (definitions, existingMetafields = []) => {
   });
 
   const result = [];
-  const processedKeys = new Set();
 
   definitions.forEach((def) => {
     const key = `${def.namespace}.${def.key}`;
-    processedKeys.add(key);
-    if (existingMap.has(key)) {
-      const existing = existingMap.get(key);
-      result.push({
-        namespace: def.namespace,
-        key: def.key,
-        type: existing.type || def.type,
-        value: existing.value ?? "",
-      });
-    } else {
-      result.push({
-        namespace: def.namespace,
-        key: def.key,
-        type: def.type,
-        value: "",
-      });
-    }
-  });
-
-  existingMetafields.forEach((m) => {
-    if (!m || !m.namespace || !m.key) return;
-    const key = `${m.namespace}.${m.key}`;
-    if (!processedKeys.has(key)) {
-      result.push({
-        namespace: m.namespace,
-        key: m.key,
-        type: m.type || "",
-        value: m.value ?? "",
-      });
-    }
+    const existing = existingMap.get(key);
+    result.push({
+      namespace: def.namespace,
+      key: def.key,
+      type: existing?.type || def.type,
+      value: existing?.value ?? "",
+    });
   });
 
   return result;
