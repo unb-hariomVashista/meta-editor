@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server.js";
 import prisma from "../db.server.js";
+import { fetchMetafieldDefinitions, mergeMetafields } from "../metafields.server.js";
 
 const fetchAllVariantMetafields = async (admin, variantId) => {
   let hasNextPage = true;
@@ -81,10 +82,13 @@ export const action = async ({ request }) => {
   const json = await response.json();
   const variants = json.data.nodes || [];
 
+  const definitions = await fetchMetafieldDefinitions(admin, "PRODUCTVARIANT");
+
   const variantsWithMetafields = await Promise.all(
     variants.map(async (variant) => {
       if (!variant) return null;
-      const metafields = await fetchAllVariantMetafields(admin, variant.id);
+      const existingMetafields = await fetchAllVariantMetafields(admin, variant.id);
+      const metafields = mergeMetafields(definitions, existingMetafields);
       return { ...variant, metafields };
     })
   );
@@ -109,8 +113,8 @@ export const action = async ({ request }) => {
       rows.push([
         variant.id, 
         variant.title, 
-        variant.product.handle, 
-        variant.product.title, 
+        variant.product?.handle || "", 
+        variant.product?.title || "", 
         "", "", "", ""
       ]);
       return;
@@ -120,8 +124,8 @@ export const action = async ({ request }) => {
       rows.push([
         variant.id,
         variant.title,
-        variant.product.handle,
-        variant.product.title,
+        variant.product?.handle || "",
+        variant.product?.title || "",
         field.namespace,
         field.key,
         field.type,

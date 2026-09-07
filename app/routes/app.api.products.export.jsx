@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server.js";
 import prisma from "../db.server.js";
+import { fetchMetafieldDefinitions, mergeMetafields } from "../metafields.server.js";
 
 const fetchAllMetafields = async (admin, productId) => {
   let hasNextPage = true;
@@ -39,7 +40,8 @@ const fetchAllMetafields = async (admin, productId) => {
     );
 
     const json = await response.json();
-    const metafieldConnection = json.data.product.metafields;
+    const metafieldConnection = json.data?.product?.metafields;
+    if (!metafieldConnection) break;
 
     metafields.push(...metafieldConnection.edges.map((e) => e.node));
     hasNextPage = metafieldConnection.pageInfo.hasNextPage;
@@ -86,11 +88,14 @@ export const action = async ({ request }) => {
   const json = await response.json();
   const products = json.data.nodes || [];
 
+  const definitions = await fetchMetafieldDefinitions(admin, "PRODUCT");
+
   const productsWithMetafields = await Promise.all(
     products.map(async (product) => {
       if (!product) return null;
 
-      const metafields = await fetchAllMetafields(admin, product.id);
+      const existingMetafields = await fetchAllMetafields(admin, product.id);
+      const metafields = mergeMetafields(definitions, existingMetafields);
 
       return {
         ...product,

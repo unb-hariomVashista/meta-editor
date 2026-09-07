@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "208e333c2b7c9ef8b56b83ddd1dcc01c"
-name = "Meta Editor"
-application_url = "https://meta-editor.onrender.com"
+name = "Manage Metafields ‑ MetaStudio"
+application_url = "https://metastudio.unbundl.com"
 embedded = true
 
 [webhooks]
@@ -27,4 +27,7 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ ]
+redirect_urls = [
+  "https://metastudio.unbundl.com/api/auth",
+  "https://metastudio.unbundl.com/api/auth/callback"
+]

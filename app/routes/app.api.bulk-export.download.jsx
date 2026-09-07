@@ -1,8 +1,9 @@
 import { authenticate } from "../shopify.server.js";
 import prisma from "../db.server.js";
+import { fetchMetafieldDefinitions, mergeMetafields } from "../metafields.server.js";
 
 export const action = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const body = await request.json();
   const { url, type } = body;
 
@@ -27,6 +28,9 @@ export const action = async ({ request }) => {
     }
   });
 
+  const ownerType = type === "products" ? "PRODUCT" : "PRODUCTVARIANT";
+  const definitions = await fetchMetafieldDefinitions(admin, ownerType);
+
   // Convert to CSV
   let rows = [];
   if (type === "products") {
@@ -41,10 +45,12 @@ export const action = async ({ request }) => {
     ]);
 
     Object.values(nodes).forEach(product => {
-      if (!product.metafields || product.metafields.length === 0) {
+      const mergedMetafields = mergeMetafields(definitions, product.metafields || []);
+
+      if (mergedMetafields.length === 0) {
         rows.push([product.id, product.handle, product.title, "", "", "", ""]);
       } else {
-        product.metafields.forEach(field => {
+        mergedMetafields.forEach(field => {
           rows.push([
             product.id,
             product.handle,
@@ -72,11 +78,12 @@ export const action = async ({ request }) => {
     Object.values(nodes).forEach(variant => {
       const productHandle = variant.product?.handle || "";
       const productTitle = variant.product?.title || "";
+      const mergedMetafields = mergeMetafields(definitions, variant.metafields || []);
 
-      if (!variant.metafields || variant.metafields.length === 0) {
+      if (mergedMetafields.length === 0) {
         rows.push([variant.id, variant.title, productHandle, productTitle, "", "", "", ""]);
       } else {
-        variant.metafields.forEach(field => {
+        mergedMetafields.forEach(field => {
           rows.push([
             variant.id,
             variant.title,
