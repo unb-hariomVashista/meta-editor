@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
@@ -14,6 +14,17 @@ export default function ProductImport() {
   const [successMsg, setSuccessMsg] = useState("");
   const [importErrors, setImportErrors] = useState([]);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isSubmitting) {
+        e.preventDefault();
+        e.returnValue = "Import in progress. Leaving this page will interrupt the import.";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isSubmitting]);
 
   const parseLine = (line) => {
     const matches = line.match(/(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g);
@@ -42,6 +53,10 @@ export default function ProductImport() {
       setIsSubmitting(false);
       return;
     }
+
+    let totalImported = 0;
+    let accumulatedErrors = [];
+    let parsedCount = 0;
 
     try {
       const text = await file.text();
@@ -103,6 +118,8 @@ export default function ProductImport() {
         });
       }
 
+      parsedCount = metafields.length;
+
       if (metafields.length === 0) {
         let msg = "No valid metafields found to import.";
         if (invalidTypeRows > 0) msg += ` ${invalidTypeRows} rows were skipped because they contained Variant GIDs instead of Product GIDs.`;
@@ -110,37 +127,66 @@ export default function ProductImport() {
         throw new Error(msg);
       }
 
-      const CHUNK_SIZE = 500;
-      let totalImported = 0;
-      let accumulatedErrors = [];
-
+      const CHUNK_SIZE = 150;
       setProgress({ current: 0, total: metafields.length });
-      const token = await window.shopify.idToken();
+
+      const postChunkWithRetry = async (batch, isFinal, currentTotal, currentErrorCount, maxRetries = 5) => {
+        let attempt = 0;
+        while (attempt < maxRetries) {
+          attempt++;
+          try {
+            const token = await window.shopify.idToken();
+            const res = await fetch("/app/api/bulk-import-chunk", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                metafields: batch,
+                type: "products",
+                isFinal,
+                totalImported: currentTotal,
+                totalErrors: currentErrorCount
+              })
+            });
+
+            if (res.status === 401) {
+              await new Promise(r => setTimeout(r, 1000));
+              continue;
+            }
+
+            if (res.status === 429 || res.status >= 500) {
+              const waitMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+              await new Promise(r => setTimeout(r, waitMs));
+              continue;
+            }
+
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || `Server returned error ${res.status}: ${res.statusText}`);
+            }
+
+            return await res.json();
+          } catch (err) {
+            if (attempt >= maxRetries) throw err;
+            const waitMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+            await new Promise(r => setTimeout(r, waitMs));
+          }
+        }
+      };
 
       for (let i = 0; i < metafields.length; i += CHUNK_SIZE) {
         const batch = metafields.slice(i, i + CHUNK_SIZE);
         const isFinal = (i + CHUNK_SIZE) >= metafields.length;
 
-        const res = await fetch("/app/api/bulk-import-chunk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            metafields: batch,
-            type: "products",
-            isFinal,
-            totalImported,
-            totalErrors: accumulatedErrors.length
-          })
-        });
+        const data = await postChunkWithRetry(
+          batch,
+          isFinal,
+          totalImported,
+          accumulatedErrors.length
+        );
 
-        if (!res.ok) {
-           throw new Error("Server error during import chunk processing.");
-        }
-
-        const data = await res.json();
         totalImported += data.successCount || 0;
         if (data.errors && data.errors.length > 0) {
           accumulatedErrors.push(...data.errors);
@@ -158,10 +204,36 @@ export default function ProductImport() {
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "An unexpected error occurred during processing.");
+
+      // Record error/partial log in database
+      try {
+        const token = await window.shopify.idToken();
+        await fetch("/app/api/logs/record", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            action: "PRODUCT_IMPORT",
+            status: totalImported > 0 ? "PARTIAL" : "ERROR",
+            details: {
+              successCount: totalImported,
+              totalRows: parsedCount,
+              errorMessage: err.message || "Import failed",
+              sampleErrors: accumulatedErrors.slice(0, 50),
+              errorCount: accumulatedErrors.length + 1
+            }
+          })
+        });
+      } catch (logErr) {
+        console.error("Failed to record error log:", logErr);
+      }
     }
 
     setIsSubmitting(false);
   };
+
 
   return (
     <div className="page-section-container">

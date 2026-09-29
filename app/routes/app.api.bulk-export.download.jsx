@@ -5,7 +5,7 @@ import { fetchMetafieldDefinitions, mergeMetafields } from "../metafields.server
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const body = await request.json();
-  const { url, type } = body;
+  const { url, type, ids } = body;
 
   const res = await fetch(url);
   const text = await res.text();
@@ -13,20 +13,31 @@ export const action = async ({ request }) => {
   const lines = text.trim().split("\n");
   const nodes = {};
 
-  // Parse JSONL
+  // Parse JSONL safely
+  const parentChildMap = {};
   lines.forEach(line => {
     if (!line) return;
-    const obj = JSON.parse(line);
-    // In bulk operation JSONL, child objects (like metafields) have an `__parentId`.
-    if (obj.__parentId) {
-      if (!nodes[obj.__parentId].metafields) {
-        nodes[obj.__parentId].metafields = [];
+    try {
+      const obj = JSON.parse(line);
+      if (obj.__parentId) {
+        if (!parentChildMap[obj.__parentId]) {
+          parentChildMap[obj.__parentId] = [];
+        }
+        parentChildMap[obj.__parentId].push(obj);
+      } else if (obj.id) {
+        nodes[obj.id] = { ...obj, metafields: [] };
       }
-      nodes[obj.__parentId].metafields.push(obj);
-    } else {
-      nodes[obj.id] = { ...obj, metafields: [] };
+    } catch (e) {
+      console.warn("Skipping unparseable line:", line);
     }
   });
+
+  Object.keys(parentChildMap).forEach(parentId => {
+    if (nodes[parentId]) {
+      nodes[parentId].metafields = parentChildMap[parentId];
+    }
+  });
+
 
   const ownerType = type === "products" ? "PRODUCT" : "PRODUCTVARIANT";
   const definitions = await fetchMetafieldDefinitions(admin, ownerType);
@@ -104,10 +115,15 @@ export const action = async ({ request }) => {
     .join("\n");
     
   try {
+    const hasFilter = ids && ids.length > 0;
+    const actionName = hasFilter
+      ? (type === "products" ? "PRODUCT_EXPORT" : "VARIANT_EXPORT")
+      : (type === "products" ? "PRODUCT_EXPORT_ALL" : "VARIANT_EXPORT_ALL");
+
     await prisma.actionLog.create({
       data: {
         shop: session.shop,
-        action: type === "products" ? "PRODUCT_EXPORT_ALL" : "VARIANT_EXPORT_ALL",
+        action: actionName,
         status: "SUCCESS",
         details: JSON.stringify({ itemsExported: Object.keys(nodes).length })
       }

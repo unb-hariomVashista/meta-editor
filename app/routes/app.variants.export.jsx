@@ -211,7 +211,7 @@ function VariantExport() {
   };
 
   const handleBulkExportProcess = async (type, ids = null) => {
-    const token = await window.shopify.idToken();
+    let token = await window.shopify.idToken();
     let res = await fetch("/app/api/bulk-export/start", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -227,6 +227,7 @@ function VariantExport() {
     let url = null;
     while (status === "RUNNING" || status === "CREATED") {
       await new Promise(resolve => setTimeout(resolve, 3000));
+      token = await window.shopify.idToken();
       let pollRes = await fetch("/app/api/bulk-export/poll", {
          headers: { "Authorization": `Bearer ${token}` }
       });
@@ -244,10 +245,11 @@ function VariantExport() {
     }
 
     if (url) {
+      token = await window.shopify.idToken();
       let dlRes = await fetch("/app/api/bulk-export/download", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ type, url })
+        body: JSON.stringify({ type, url, ids })
       });
       
       if (!dlRes.ok) throw new Error("Failed to generate CSV");
@@ -273,9 +275,24 @@ function VariantExport() {
     } catch (e) {
       console.error(e);
       alert("Error exporting all variants: " + e.message);
+      try {
+        const token = await window.shopify.idToken();
+        await fetch("/app/api/logs/record", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            action: "VARIANT_EXPORT_ALL",
+            status: "ERROR",
+            details: { errorMessage: e.message }
+          })
+        });
+      } catch (logErr) {
+        console.error("Failed to record export error log:", logErr);
+      }
     }
     setIsProcessingBulk(false);
   };
+
 
   useEffect(() => {
     const op = data.currentBulkOperation;

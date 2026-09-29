@@ -72,7 +72,7 @@ export default function Logs() {
                     {new Date(log.createdAt).toLocaleString()}
                   </td>
                   <td className="action-cell">
-                    <strong>{log.action.replace("_", " ")}</strong>
+                    <strong>{log.action?.replace(/_/g, " ")}</strong>
                   </td>
                   <td>
                     <span className={`status-pill ${log.status.toLowerCase()}`}>
